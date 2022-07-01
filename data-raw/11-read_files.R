@@ -1,8 +1,25 @@
 Rfuns::load_pkgs('data.table', 'fst', 'readxl')
 
 in_path <- file.path(ext_path, 'us', 'NEISS')
-out_path <- file.path(app_path, 'NEISS')
+out_path <- file.path(dataus_path, 'neiss')
 
+save_dts <- function(y, fn, fst_path, as_rdb = TRUE, as_rda = TRUE, csv_in_pkg = TRUE, csv2zip = FALSE){
+    write_fst(y, file.path(fst_path, fn))
+    if(as_rdb) dd_dbm_do(dbn, 'w', fn, y)
+    if(csv_in_pkg){
+        fwrite(y, paste0('./data-raw/', fn, '.csv'))
+        if(csv2zip){
+            zip(paste0('./data-raw/', fn, '.csv.zip'), paste0('./data-raw/', fn, '.csv'))
+            file.remove(paste0('./data-raw/', fn, '.csv'))
+        }
+    }
+    if(as_rda){
+        assign(fn, y)
+        save( list = fn, file = file.path('data', paste0(fn, '.rda')), version = 3, compress = 'gzip' )
+    }
+}
+
+# read and bind all excel files
 y <- rbindlist(lapply(
             2:21, 
             \(x){
@@ -14,34 +31,43 @@ y <- rbindlist(lapply(
             }
 ))
 
+# separate all vars with multiple columns, plus narratives 
 yb <- rbindlist(list( y[, .(id, body_part = Body_Part)], y[!is.na(Body_Part_2), .(id, body_part = Body_Part_2)] ))
 yd <- rbindlist(list( y[, .(id, diagnosis = Diagnosis)], y[!is.na(Diagnosis_2), .(id, diagnosis = Diagnosis_2)] ))
 yp <- rbindlist(list( y[, .(id, product = Product_1)], y[!is.na(Product_2), .(id, product = Product_2)], y[!is.na(Product_3), .(id, product = Product_3)] ))
-y[, c('Body_Part', 'Body_Part_2', 'Diagnosis', 'Diagnosis_2', 'Product_1', 'Product_2', 'Product_3') := NULL]
+yn <- y[, .(id, narrative = Narrative)]
+y[, c('Body_Part', 'Body_Part_2', 'Diagnosis', 'Diagnosis_2', 'Product_1', 'Product_2', 'Product_3', 'Narrative') := NULL]
 
-setnames(y, c('id', 'date', 'age', 'sex', 'race', 'hisp', 'disposition', 'location', 'fire_inv', 'alcohol', 'drugs', 'narrative', 'stratum', 'psu', 'weight'))
-
+# cleaning
+setnames(y, c('id', 'date', 'age', 'gender', 'race', 'hisp', 'disposition', 'location', 'fire', 'alcohol', 'drugs', 'stratum', 'psu', 'weight'))
 y[, date := as.Date(date)]
 y[age == 0, age := NA]
-y[sex %in% c(0, 3), sex := NA]
+y[, sex := NA_character_][gender %in% 1:2, sex := ifelse(gender == 1, 'M', 'F')][, gender := NULL]
 y[race == 0, race := NA]
 y[race == 3, race := 9]
 y[hisp == 1, race := 3]
 y[, hisp := NULL]
 y[disposition == 9, disposition := NA]
 y[location == 0, location := NA]
-y[fire_inv %in% c(1, 2), fire_inv := NA]
-y[alcohol == 0, alcohol := 1]
-y[alcohol %in% c(1, 2), alcohol := NA]
-y[drugs == 0, drugs := 1]
-y[drugs %in% c(1, 2), drugs := NA]
+y[fire == 0, fire := NA]
+y[fire == 2, fire := 0]
+y[fire == 3, fire := 2]
+setcolorder(y, c('id', 'weight', 'date', 'age', 'sex'))
 
-write_fst(yb, file.path(out_path, 'body_parts'))
-write_fst(yd, file.path(out_path, 'diagnosis'))
-write_fst(yp, file.path(out_path, 'products'))
-write_fst(y, file.path(out_path, 'dataset'))
+# create "infants" and recode monthly ages into two yearly class
+yi <- y[age > 200][, age := age - 200]
+y[age >= 212, age := 1]
+y[age >= 200, age := 0]
 
+# saving: as fst (in public/data), as rda (in package), as csv.zip (in data-raw)
+save_dts(yb, 'body_parts', out_path, csv2zip = TRUE)
+save_dts(yd, 'diagnosis', out_path, csv2zip = TRUE)
+save_dts(yp, 'products', out_path, csv2zip = TRUE)
+save_dts(yi, 'infants', out_path, csv2zip = TRUE)
+save_dts(yn, 'narratives', out_path, as_rda = FALSE, csv_in_pkg = FALSE)
+save_dts(y, 'adults', out_path, csv2zip = TRUE)
 
+# US population by year, sex, and age
 tmpf <- tempfile()
 tmpd <- tempdir()
 download.file('https://www2.census.gov/programs-surveys/international-programs/about/idb/idbzip.zip', tmpf)
@@ -54,4 +80,8 @@ setnames(yc, c('year', 'sex', 'value', 'age'))
 yc <- yc[year >= 2002 & year <= 2021]
 yc <- yc[sex > 0]
 setcolorder(yc, c('year', 'sex', 'age'))
-write_fst(yc, file.path(out_path, 'population'))
+save_dts(yc, 'population', out_path)
+
+# clean and exit
+rm(list = ls())
+gc()
