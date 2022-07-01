@@ -41,3 +41,17 @@ write_fst(yd, file.path(out_path, 'diagnosis'))
 write_fst(yp, file.path(out_path, 'products'))
 write_fst(y, file.path(out_path, 'dataset'))
 
+
+tmpf <- tempfile()
+tmpd <- tempdir()
+download.file('https://www2.census.gov/programs-surveys/international-programs/about/idb/idbzip.zip', tmpf)
+unzip(tmpf, exdir = tmpd)
+yc <- fread(file.path(tmpd, 'idbsingleyear.all'))
+unlink(tmpd)
+unlink(tmpf)
+yc <- yc[FIPS == 'US', c(1:3, 8)]
+setnames(yc, c('year', 'sex', 'value', 'age'))
+yc <- yc[year >= 2002 & year <= 2021]
+yc <- yc[sex > 0]
+setcolorder(yc, c('year', 'sex', 'age'))
+write_fst(yc, file.path(out_path, 'population'))
