@@ -9,4 +9,5 @@ Besides the main table, there are three linked tables (`body_parts`, `diagnosis`
 An ancillary lookup table `attributes` details the labels associated with each categorical variable.
 
 ### Resources
-- [website](https://www.cpsc.gov/cgibin/NEISSQuery/home.aspx)
+- [CPSC NEISS Website](https://www.cpsc.gov/cgibin/NEISSQuery/home.aspx)
+- [US Census Population]()
